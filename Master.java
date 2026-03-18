@@ -4,7 +4,7 @@ import java.util.*;
 
 //class Master
 public class Master {
-    private static final int PORT = 5000; //η θυρα που ακουει ο master για τα αιτηματα απο manager & players
+    private static final int PORT = 5001; //η θυρα που ακουει ο master για τα αιτηματα απο manager & players
     
     private List<WorkerInfo> workers = new ArrayList<>(); //λιστα με διαθεσιμους workers
 
@@ -61,8 +61,8 @@ public class Master {
 
         @Override
         public void run() {
-            try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream()); //τα χρησιμοποιουμε διοτι δε στελνουμε απλως κειμενο, αλλα ολοκληρα αντικειμενα
-                ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
+            try (ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+                 ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 
                 Object request = in.readObject();
 
@@ -73,54 +73,29 @@ public class Master {
                     //η πραξη εξασφαλιζει παντα οτι το παιχνιδι "χ" θα πηγαινει παντα στον ιδιο worker
                     int workerIndex = Math.abs(newGame.gameName.hashCode()) % workers.size(); 
                     forwardGameToWorker(newGame, workers.get(workerIndex));
-                } //end if
+                    System.out.println("Game " + newGame.gameName + " added to worker " + workers.get(workerIndex).port);
+                } 
         
                 //2η περιπτωση (player): αναζητηση παιχνιδιων mapreduce
                 else if (request instanceof SearchFilters) {
-                // Ειδοποίηση όλων των Workers
-                    for (WorkerInfo worker : workers) {
-                    Master.this.notifyWorkerForSearch((SearchFilters) request, worker);
-                } //end else if
-
-                // Αναμονή αποτελέσματος από τον Reducer
-                /*ο master ανοιγει ενα server socket στη θυρα 5001 και παγωνει περιμενοντας τον reducer-
-                οταν ο reducer τελειωσει συνδεεται στον master και του δινει τη λιστα*/
-                try (ServerSocket reducerListener = new ServerSocket(5001)) {
-                    Socket reducerSocket = reducerListener.accept();
-                    ObjectInputStream inRed = new ObjectInputStream(reducerSocket.getInputStream());
-                    List<Game> finalResults = (List<Game>) inRed.readObject();
-
+                    System.out.println("Starting MapReduce Search...");
+                    // Κλήση της μεθόδου MapReduce που υλοποιήσαμε παρακάτω
+                    List<Game> finalResults = performMapReduceSearch((SearchFilters) request);
                     out.writeObject(finalResults);
                     out.flush();
-                } //end try
-            } //end try
+                }
 
                 //3η περιπτωση (player): πονταρισμα
                 else if (request instanceof PlayRequest) {
                     PlayRequest playReq = (PlayRequest) request;
-                    // Διόρθωση στο hashing και στη μεταβλητή επιστροφής
                     int workerIndex = Math.abs(playReq.gameName.hashCode()) % workers.size(); 
                     double winAmount = forwardPlayToWorker(playReq, workers.get(workerIndex));
 
-                    // Στέλνουμε το winAmount (double), όχι το finalResults
                     out.writeDouble(winAmount); 
                     out.flush();
                 }
-            } catch (Exception e) {
-                System.err.println("Master Error: " + e.getMessage());
-            }
-        
-        }
-                /* 3. PLAYER: Ποντάρισμα (Forwarding)
-                else if (request instanceof PlayRequest) {
-                    PlayRequest playReq = (PlayRequest) request;
-                    int workerIndex = Math.abs(playReq.gameName.hashCode()) % workers.size();
-                    double winAmount = forwardPlayToWorker(playReq, workers.get(workerIndex));
-                    out.writeDouble(winAmount);
-                    out.flush();
-                }
-
-                // 4. MANAGER: Προβολή στατιστικών (MapReduce Aggregation)
+                
+                //4η περιπτωση (manager): View Profits (MapReduce Aggregation)
                 else if (request instanceof String && request.equals("VIEW_PROFITS")) {
                     Map<String, Double> stats = getGlobalStatistics();
                     out.writeObject(stats);
@@ -128,15 +103,17 @@ public class Master {
                 }
 
             } catch (Exception e) {
-                System.err.println("Error handling client: " + e.getMessage());
+                System.err.println("Master Error: " + e.getMessage());
+            } finally {
+                try { socket.close(); } catch (IOException e) {}
             }
         }
-    } 
-    */
+    }
 
-    /*  --- MAPREDUCE: Αναζήτηση Παιχνιδιών ---
+    // --- MAPREDUCE: Αναζήτηση Παιχνιδιών ---
+    // Αυτό αντικαθιστά τη notifyWorkerForSearch που προκαλούσε το σφάλμα
     private List<Game> performMapReduceSearch(SearchFilters filters) {
-        List<List<Game>> intermediateResults = Collections.synchronizedList(new ArrayList<>());
+        List<Game> finalResults = Collections.synchronizedList(new ArrayList<>());
         List<Thread> threads = new ArrayList<>();
 
         for (WorkerInfo worker : workers) {
@@ -144,9 +121,15 @@ public class Master {
                 try (Socket s = new Socket(worker.ip, worker.port);
                      ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
                      ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
-                    out.writeObject(filters);
-                    intermediateResults.add((List<Game>) in.readObject());
-                } catch (Exception e) { e.printStackTrace(); }
+                    
+                    out.writeObject(filters); // Φάση MAP
+                    out.flush();
+                    
+                    List<Game> results = (List<Game>) in.readObject();
+                    finalResults.addAll(results); // Φάση REDUCE
+                } catch (Exception e) {
+                    System.err.println("Worker " + worker.port + " is not responding.");
+                }
             });
             t.start();
             threads.add(t);
@@ -154,11 +137,6 @@ public class Master {
 
         for (Thread t : threads) {
             try { t.join(); } catch (InterruptedException e) { e.printStackTrace(); }
-        }
-
-        List<Game> finalResults = new ArrayList<>();
-        for (List<Game> subList : intermediateResults) {
-            finalResults.addAll(subList);
         }
         return finalResults;
     }
@@ -166,17 +144,23 @@ public class Master {
     // --- MAPREDUCE: Συγκέντρωση Στατιστικών Κέρδους ---
     private Map<String, Double> getGlobalStatistics() {
         Map<String, Double> globalProfits = new HashMap<>();
-        List<Map<String, Double>> intermediateResults = Collections.synchronizedList(new ArrayList<>());
         List<Thread> threads = new ArrayList<>();
 
-        // MAP Phase
         for (WorkerInfo worker : workers) {
             Thread t = new Thread(() -> {
                 try (Socket s = new Socket(worker.ip, worker.port);
                      ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
                      ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
-                    out.writeObject("GET_STATS");
-                    intermediateResults.add((Map<String, Double>) in.readObject());
+                    
+                    out.writeObject("GET_STATS"); // MAP
+                    out.flush();
+                    
+                    Map<String, Double> workerMap = (Map<String, Double>) in.readObject();
+                    synchronized (globalProfits) {
+                        for (Map.Entry<String, Double> entry : workerMap.entrySet()) {
+                            globalProfits.put(entry.getKey(), globalProfits.getOrDefault(entry.getKey(), 0.0) + entry.getValue());
+                        }
+                    } // REDUCE
                 } catch (Exception e) { e.printStackTrace(); }
             });
             t.start();
@@ -186,49 +170,34 @@ public class Master {
         for (Thread t : threads) {
             try { t.join(); } catch (InterruptedException e) { e.printStackTrace(); }
         }
-
-        // REDUCE Phase: Aggregation
-        for (Map<String, Double> workerMap : intermediateResults) {
-            for (Map.Entry<String, Double> entry : workerMap.entrySet()) {
-                globalProfits.put(entry.getKey(), globalProfits.getOrDefault(entry.getKey(), 0.0) + entry.getValue());
-            }
-        }
         return globalProfits;
     }
-    */
 
     //στελνει το αντικειμενο game στον σωστο worker για αποθηκευση
     private void forwardGameToWorker(Game game, WorkerInfo worker) throws IOException {
-
         //ανοιγει socket στην IP & Port του Worker που επιλεχθηκε μεσω hashing 
-        try (Socket s = new Socket(worker.ip, worker.port)){
-            ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
-
+        try (Socket s = new Socket(worker.ip, worker.port);
+             ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream())){
             //στελνει το αντικειμενο του παιχνιδιου
             out.writeObject(game);
             out.flush();
         } //end try
-
     } //end method
 
     //στελνει τα φιλτρα αναζητησης σε ολους τους workers για να αρχισει η διαδικασια του mapreduce
     private double forwardPlayToWorker(PlayRequest req, WorkerInfo worker) throws IOException {
-
-        //συνδεση στον worker
         try (Socket s = new Socket(worker.ip, worker.port);
-             ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
-             ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
+            ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
+            ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
 
-            //του στελνει τα φιλτρα για να γινει το map "κομματι"
             out.writeObject(req);
             out.flush();
-            return in.readDouble();
-        } //end try
-    } //end method
+            
+            // ΠΡΟΣΟΧΗ: Περιμένουμε το double από τον Worker
+            return in.readDouble(); 
+        } catch (IOException e) {
+            System.err.println("Error communicating with worker during play: " + e.getMessage());
+            return -1.0; // Επιστροφή λάθους
+        }
+    }
 }
-
-    //αυτο ειναι απ το quick fix γιατι ειχα error βλεπουμε αν ειναι σωστο 
-    public void notifyWorkerForSearch(SearchFilters request, WorkerInfo worker) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'notifyWorkerForSearch'");
-    }}

@@ -1,10 +1,11 @@
 import java.io.*;
 import java.net.*;
 import java.util.Scanner;
+import java.util.List;
 
 public class DummyPlayerApp {
     private static final String MASTER_IP = "localhost";
-    private static final int MASTER_PORT = 5000;
+    private static final int MASTER_PORT = 5001; // Η νέα θύρα
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
@@ -16,44 +17,89 @@ public class DummyPlayerApp {
 
             // 1. Αποστολή Φίλτρων (Αναζήτηση)
             System.out.println("Set your filters:");
-            System.out.print("Min Stars (1-5): ");
-            int stars = scanner.nextInt();
-            System.out.print("Risk level (low, medium, high): ");
-            String risk = scanner.next();
             
-            // Στέλνουμε ένα αντικείμενο με τα φίλτρα στον Master [cite: 22, 70]
+            // Έλεγχος για Stars
+            int stars = 0;
+            while (true) {
+                System.out.print("Min Stars (1-5): ");
+                if (scanner.hasNextInt()) {
+                    stars = scanner.nextInt();
+                    if (stars >= 1 && stars <= 5) break;
+                }
+                System.out.println("Invalid input! Please enter a number between 1 and 5.");
+                scanner.next(); // Καθαρισμός buffer
+            }
+
+            // Έλεγχος για Risk
+            String risk = "";
+            while (true) {
+                System.out.print("Risk level (low, medium, high): ");
+                risk = scanner.next().toLowerCase();
+                if (risk.equals("low") || risk.equals("medium") || risk.equals("high")) break;
+                System.out.println("Invalid risk! Use: low, medium, or high.");
+            }
+            
             SearchFilters filters = new SearchFilters(stars, risk);
             out.writeObject(filters);
             out.flush();
 
-            // 2. Λήψη Αποτελεσμάτων (MapReduce Result) [cite: 22, 71]
+            // 2. Λήψη Αποτελεσμάτων (MapReduce Result)
             System.out.println("Searching for games...");
             Object response = in.readObject();
-            if (response instanceof java.util.List) {
-                java.util.List<Game> foundGames = (java.util.List<Game>) response;
+            if (response instanceof List) {
+                List<Game> foundGames = (List<Game>) response;
+                
+                if (foundGames.isEmpty()) {
+                    System.out.println("No games found with these filters.");
+                    return;
+                }
+
                 System.out.println("Available Games:");
                 for (int i = 0; i < foundGames.size(); i++) {
                     System.out.println(i + ". " + foundGames.get(i).gameName);
                 }
 
-                // 3. Πραγματοποίηση Πονταρίσματος [cite: 23, 73]
-                System.out.print("\nSelect game index to play: ");
-                int gameIdx = scanner.nextInt();
-                System.out.print("Enter bet amount: ");
-                double bet = scanner.nextDouble();
+                // 3. Πραγματοποίηση Πονταρίσματος
+                int gameIdx = -1;
+                while (true) {
+                    System.out.print("\nSelect game index to play: ");
+                    if (scanner.hasNextInt()) {
+                        gameIdx = scanner.nextInt();
+                        if (gameIdx >= 0 && gameIdx < foundGames.size()) break;
+                    }
+                    System.out.println("Invalid index! Select a number from the list.");
+                    scanner.next();
+                }
 
-                // Αποστολή αιτήματος Play στον Master [cite: 73]
+                double bet = 0;
+                while (true) {
+                    System.out.print("Enter bet amount: ");
+                    if (scanner.hasNextDouble()) {
+                        bet = scanner.nextDouble();
+                        if (bet >= foundGames.get(gameIdx).minBet) break;
+                        System.out.println("Bet too low! Min bet for this game is: " + foundGames.get(gameIdx).minBet);
+                    } else {
+                        System.out.println("Invalid input! Please enter a number for the bet.");
+                        scanner.next();
+                    }
+                }
+
                 PlayRequest playReq = new PlayRequest(foundGames.get(gameIdx).gameName, bet);
                 out.writeObject(playReq);
                 out.flush();
 
-                // Λήψη αποτελέσματος (Win/Loss) [cite: 144, 145]
                 double result = in.readDouble();
-                System.out.println("Result: You got " + result + " tokens!");
+                if (result > bet) {
+                    System.out.println("CONGRATULATIONS! You won: " + result + " tokens!");
+                } else if (result > 0) {
+                    System.out.println("You got back: " + result + " tokens.");
+                } else {
+                    System.out.println("You lost. Better luck next time!");
+                }
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Communication Error: " + e.getMessage());
         }
     }
 }
