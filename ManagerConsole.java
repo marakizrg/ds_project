@@ -5,7 +5,7 @@ import java.util.Scanner;
 
 public class ManagerConsole {
     private static final String MASTER_IP = "localhost";
-    private static final int MASTER_PORT = 5001; // Η νέα θύρα λόγω AirPlay conflict στο Mac
+    private static final int MASTER_PORT = 9000; // Η νέα θύρα λόγω AirPlay conflict στο Mac
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);

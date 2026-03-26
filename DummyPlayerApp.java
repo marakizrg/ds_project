@@ -5,7 +5,7 @@ import java.util.List;
 
 public class DummyPlayerApp {
     private static final String MASTER_IP = "localhost";
-    private static final int MASTER_PORT = 5001; // Η νέα θύρα
+    private static final int MASTER_PORT = 9000; // Η νέα θύρα
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
@@ -85,16 +85,23 @@ public class DummyPlayerApp {
                 }
 
                 PlayRequest playReq = new PlayRequest(foundGames.get(gameIdx).gameName, bet);
-                out.writeObject(playReq);
-                out.flush();
 
-                double result = in.readDouble();
-                if (result > bet) {
-                    System.out.println("CONGRATULATIONS! You won: " + result + " tokens!");
-                } else if (result > 0) {
-                    System.out.println("You got back: " + result + " tokens.");
-                } else {
-                    System.out.println("You lost. Better luck next time!");
+                // Νέο socket για το PlayRequest, γιατί ο Master κλείνει τη σύνδεση μετά από κάθε αίτημα
+                try (Socket playSocket = new Socket(MASTER_IP, MASTER_PORT);
+                     ObjectOutputStream playOut = new ObjectOutputStream(playSocket.getOutputStream());
+                     ObjectInputStream playIn = new ObjectInputStream(playSocket.getInputStream())) {
+
+                    playOut.writeObject(playReq);
+                    playOut.flush();
+
+                    double result = playIn.readDouble();
+                    if (result > bet) {
+                        System.out.println("CONGRATULATIONS! You won: " + result + " tokens!");
+                    } else if (result > 0) {
+                        System.out.println("You got back: " + result + " tokens.");
+                    } else {
+                        System.out.println("You lost. Better luck next time!");
+                    }
                 }
             }
 

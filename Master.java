@@ -4,7 +4,7 @@ import java.util.*;
 
 //class Master
 public class Master {
-    private static final int PORT = 5001; //η θυρα που ακουει ο master για τα αιτηματα απο manager & players
+    private static final int PORT = 9000; //η θυρα που ακουει ο master για τα αιτηματα απο manager & players
     
     private List<WorkerInfo> workers = new ArrayList<>(); //λιστα με διαθεσιμους workers
 
