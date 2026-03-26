@@ -39,8 +39,18 @@ public class DummyPlayerApp {
                 if (risk.equals("low") || risk.equals("medium") || risk.equals("high")) break;
                 System.out.println("Invalid risk! Use: low, medium, or high.");
             }
-            
-            SearchFilters filters = new SearchFilters(stars, risk);
+
+            // Έλεγχος για Bet Category
+            String betCategory = "";
+            while (true) {
+                System.out.print("Bet category ($, $$, $$$ or 'any' for no filter): ");
+                betCategory = scanner.next().trim();
+                if (betCategory.equals("$") || betCategory.equals("$$") || betCategory.equals("$$$") || betCategory.equalsIgnoreCase("any")) break;
+                System.out.println("Invalid category! Use: $, $$, $$$ or any.");
+            }
+            if (betCategory.equalsIgnoreCase("any")) betCategory = "";
+
+            SearchFilters filters = new SearchFilters(stars, risk, betCategory);
             out.writeObject(filters);
             out.flush();
 

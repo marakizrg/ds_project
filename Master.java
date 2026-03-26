@@ -65,6 +65,21 @@ public class Master {
                     out.writeDouble(winAmount); 
                     out.flush();
                 }
+                else if (request instanceof String && ((String) request).startsWith("REMOVE_GAME:")) {
+                    String gameName = ((String) request).substring("REMOVE_GAME:".length());
+                    int workerIndex = Math.abs(gameName.hashCode()) % workers.size();
+                    forwardStringToWorker((String) request, workers.get(workerIndex));
+                    System.out.println("Remove request forwarded for: " + gameName);
+                }
+                else if (request instanceof String && ((String) request).startsWith("MODIFY_RISK:")) {
+                    String[] parts = ((String) request).split(":", 3);
+                    String gameName = parts[1];
+                    int workerIndex = Math.abs(gameName.hashCode()) % workers.size();
+                    boolean success = forwardStringWithResponse((String) request, workers.get(workerIndex));
+                    out.writeBoolean(success);
+                    out.flush();
+                    System.out.println("Modify risk request forwarded for: " + gameName + " -> " + success);
+                }
                 else if (request instanceof String && request.equals("VIEW_PROFITS")) {
                     Map<String, Double> stats = getGlobalStatistics();
                     out.writeObject(stats);
@@ -132,6 +147,24 @@ public class Master {
              ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream())){
             out.writeObject(game);
             out.flush();
+        }
+    }
+
+    private void forwardStringToWorker(String message, WorkerInfo worker) throws IOException {
+        try (Socket s = new Socket(worker.ip, worker.port);
+             ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream())) {
+            out.writeObject(message);
+            out.flush();
+        }
+    }
+
+    private boolean forwardStringWithResponse(String message, WorkerInfo worker) throws IOException {
+        try (Socket s = new Socket(worker.ip, worker.port);
+             ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
+             ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
+            out.writeObject(message);
+            out.flush();
+            return in.readBoolean();
         }
     }
 

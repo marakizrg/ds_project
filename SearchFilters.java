@@ -7,8 +7,9 @@ public class SearchFilters implements Serializable {
     public String riskLevel;    // low, medium, high [cite: 18]
     public String betCategory;  // $, $$, $$$ [cite: 17]
 
-    public SearchFilters(int minStars, String riskLevel) {
+    public SearchFilters(int minStars, String riskLevel, String betCategory) {
         this.minStars = minStars;
         this.riskLevel = riskLevel;
+        this.betCategory = betCategory;
     }
 }

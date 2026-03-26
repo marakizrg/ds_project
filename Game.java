@@ -16,12 +16,17 @@ public class Game implements Serializable {
     String betCategory; // $, $$, $$$
     double jackpot;
 
-    public Game(String name, String provider, int stars, double minBet, String risk) {
+    public Game(String name, String provider, int stars, int noOfVotes, String gameLogoPath,
+                double minBet, double maxBet, String risk, String secretKey) {
         this.gameName = name;
         this.providerName = provider;
         this.stars = stars;
+        this.noOfVotes = noOfVotes;
+        this.gameLogoPath = gameLogoPath;
         this.minBet = minBet;
+        this.maxBet = maxBet;
         this.riskLevel = risk;
+        this.secretKey = secretKey;
         calculateAutomaticFields();
     }
 
