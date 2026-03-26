@@ -6,7 +6,8 @@ import java.util.List;
 public class DummyPlayerApp {
     private static final String MASTER_IP = "localhost";
     private static final int MASTER_PORT = 9000; // Η νέα θύρα
-
+//xaxaxa
+    @SuppressWarnings("unchecked") // Καταστολή προειδοποίησης για το cast του List
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
         System.out.println("--- Welcome to Online Gaming (Dummy App) ---");
