@@ -58,7 +58,21 @@ public void run() {
             games.put(g.gameName, g);
             System.out.println("[Worker] Added: " + g.gameName);
         }
-        // ... (πρόσθεσε και το SearchFilters και το GET_STATS όπως πριν)
+        else if (request instanceof SearchFilters) {
+            SearchFilters sf = (SearchFilters) request;
+            List<Game> matches = new ArrayList<>();
+            for (Game g : games.values()) {
+                if (g.stars >= sf.minStars && g.riskLevel.equalsIgnoreCase(sf.riskLevel)) {
+                    matches.add(g);
+                }
+            }
+            out.writeObject(matches);
+            out.flush();
+        }
+        else if (request instanceof String && request.equals("GET_STATS")) {
+            out.writeObject(new HashMap<>(gameProfits));
+            out.flush();
+        }
 
     } catch (Exception e) {
         System.err.println("[Worker] Communication error: " + e.getMessage());
