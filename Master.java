@@ -3,9 +3,11 @@ import java.net.*;
 import java.util.*;
 
 public class Master {
-    private static final int PORT = 9000; //η θυρα που ακουει ο master για τα αιτηματα απο manager & players
-    
-    private List<WorkerInfo> workers = new ArrayList<>(); //λιστα με διαθεσιμους workers
+    private static final int PORT = 9000;
+    private static final String REDUCER_IP = "localhost";
+    private static final int REDUCER_PORT = 8500;
+
+    private List<WorkerInfo> workers = new ArrayList<>();
 
     @SuppressWarnings("unchecked")
     public static void main(String[] args) {
@@ -37,6 +39,7 @@ public class Master {
         public ClientHandler(Socket socket) { this.socket = socket; }
 
         @Override
+        @SuppressWarnings("unchecked")
         public void run() {
             try (ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
                  ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
@@ -45,43 +48,64 @@ public class Master {
 
                 if (request instanceof Game) {
                     Game newGame = (Game) request;
-                    int workerIndex = Math.abs(newGame.gameName.hashCode()) % workers.size(); 
+                    int workerIndex = Math.abs(newGame.gameName.hashCode()) % workers.size();
                     forwardGameToWorker(newGame, workers.get(workerIndex));
                     System.out.println("Game " + newGame.gameName + " added to worker " + workers.get(workerIndex).port);
-                } 
-                else if (request instanceof SearchFilters) {
+
+                } else if (request instanceof SearchFilters) {
                     System.out.println("Starting MapReduce Search...");
-                    List<Game> finalResults = performMapReduceSearch((SearchFilters) request);
-                    out.writeObject(finalResults);
+                    List<Game> results = performMapReduceSearch((SearchFilters) request);
+                    out.writeObject(results);
                     out.flush();
-                }
-                else if (request instanceof PlayRequest) {
+
+                } else if (request instanceof PlayRequest) {
                     PlayRequest playReq = (PlayRequest) request;
                     System.out.println("Processing play for: " + playReq.gameName);
-                    // Hashing για να βρούμε τον σωστό worker που έχει το παιχνίδι
-                    int workerIndex = Math.abs(playReq.gameName.hashCode()) % workers.size(); 
+                    int workerIndex = Math.abs(playReq.gameName.hashCode()) % workers.size();
                     double winAmount = forwardPlayToWorker(playReq, workers.get(workerIndex));
-
-                    out.writeDouble(winAmount); 
+                    out.writeDouble(winAmount);
                     out.flush();
-                }
-                else if (request instanceof String && ((String) request).startsWith("REMOVE_GAME:")) {
+
+                } else if (request instanceof String && ((String) request).startsWith("REMOVE_GAME:")) {
                     String gameName = ((String) request).substring("REMOVE_GAME:".length());
                     int workerIndex = Math.abs(gameName.hashCode()) % workers.size();
                     forwardStringToWorker((String) request, workers.get(workerIndex));
                     System.out.println("Remove request forwarded for: " + gameName);
-                }
-                else if (request instanceof String && ((String) request).startsWith("MODIFY_RISK:")) {
+
+                } else if (request instanceof String && ((String) request).startsWith("MODIFY_RISK:")) {
                     String[] parts = ((String) request).split(":", 3);
                     String gameName = parts[1];
                     int workerIndex = Math.abs(gameName.hashCode()) % workers.size();
                     boolean success = forwardStringWithResponse((String) request, workers.get(workerIndex));
                     out.writeBoolean(success);
                     out.flush();
-                    System.out.println("Modify risk request forwarded for: " + gameName + " -> " + success);
-                }
-                else if (request instanceof String && request.equals("VIEW_PROFITS")) {
-                    Map<String, Double> stats = getGlobalStatistics();
+
+                } else if (request instanceof String && ((String) request).startsWith("RATE_GAME:")) {
+                    String[] parts = ((String) request).split(":", 3);
+                    String gameName = parts[1];
+                    int workerIndex = Math.abs(gameName.hashCode()) % workers.size();
+                    boolean success = forwardStringWithResponse((String) request, workers.get(workerIndex));
+                    out.writeBoolean(success);
+                    out.flush();
+
+                } else if (request instanceof String && request.equals("VIEW_PROFITS")) {
+                    Map<String, Double> stats = performMapReduceStats("GET_STATS");
+                    out.writeObject(stats);
+                    out.flush();
+
+                } else if (request instanceof String && request.equals("VIEW_PROFITS_PROVIDER")) {
+                    Map<String, Double> stats = performMapReduceStats("GET_PROVIDER_STATS");
+                    out.writeObject(stats);
+                    out.flush();
+
+                } else if (request instanceof String && ((String) request).startsWith("VIEW_PROFITS_PLAYER:")) {
+                    String playerId = ((String) request).substring("VIEW_PROFITS_PLAYER:".length());
+                    Map<String, Double> stats = performMapReduceStats("GET_PLAYER_STATS:" + playerId);
+                    out.writeObject(stats);
+                    out.flush();
+
+                } else if (request instanceof String && request.equals("VIEW_ALL_PLAYERS")) {
+                    Map<String, Double> stats = performMapReduceStats("GET_ALL_PLAYER_STATS");
                     out.writeObject(stats);
                     out.flush();
                 }
@@ -94,57 +118,105 @@ public class Master {
         }
     }
 
+    // MAP: συλλέγει αποτελέσματα αναζήτησης από όλους τους Workers παράλληλα
+    // REDUCE: στέλνει όλα τα αποτελέσματα στον Reducer για συνδυασμό
+    @SuppressWarnings("unchecked")
     private List<Game> performMapReduceSearch(SearchFilters filters) {
-        List<Game> finalResults = Collections.synchronizedList(new ArrayList<>());
+        final List<Object> mapResults = new ArrayList<>();
+
+        // MAP phase
         List<Thread> threads = new ArrayList<>();
         for (WorkerInfo worker : workers) {
             Thread t = new Thread(() -> {
                 try (Socket s = new Socket(worker.ip, worker.port);
-                     ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
-                     ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
-                    out.writeObject(filters); 
-                    out.flush();
-                    List<Game> results = (List<Game>) in.readObject();
-                    finalResults.addAll(results);
+                     ObjectOutputStream wOut = new ObjectOutputStream(s.getOutputStream());
+                     ObjectInputStream wIn = new ObjectInputStream(s.getInputStream())) {
+                    wOut.writeObject(filters);
+                    wOut.flush();
+                    Object result = wIn.readObject();
+                    synchronized (mapResults) { mapResults.add(result); }
                 } catch (Exception e) {
-                    System.err.println("Worker " + worker.port + " error during search.");
+                    System.err.println("Worker " + worker.port + " error during search: " + e.getMessage());
+                    synchronized (mapResults) { mapResults.add(new ArrayList<Game>()); }
                 }
             });
             t.start();
             threads.add(t);
         }
         for (Thread t : threads) { try { t.join(); } catch (InterruptedException e) {} }
-        return finalResults;
+
+        // REDUCE phase
+        try (Socket s = new Socket(REDUCER_IP, REDUCER_PORT);
+             ObjectOutputStream rOut = new ObjectOutputStream(s.getOutputStream());
+             ObjectInputStream rIn = new ObjectInputStream(s.getInputStream())) {
+            rOut.writeObject("REDUCE_SEARCH");
+            rOut.writeObject(mapResults);
+            rOut.flush();
+            return (List<Game>) rIn.readObject();
+        } catch (Exception e) {
+            System.err.println("Reducer unavailable, combining locally: " + e.getMessage());
+            List<Game> combined = new ArrayList<>();
+            for (Object r : mapResults) {
+                if (r instanceof List) combined.addAll((List<Game>) r);
+            }
+            return combined;
+        }
     }
 
-    private Map<String, Double> getGlobalStatistics() {
-        Map<String, Double> globalProfits = new HashMap<>();
+    // MAP: συλλέγει στατιστικά από όλους τους Workers παράλληλα
+    // REDUCE: στέλνει στον Reducer για άθροιση
+    @SuppressWarnings("unchecked")
+    private Map<String, Double> performMapReduceStats(String workerCommand) {
+        final List<Object> mapResults = new ArrayList<>();
+
+        // MAP phase
         List<Thread> threads = new ArrayList<>();
         for (WorkerInfo worker : workers) {
             Thread t = new Thread(() -> {
                 try (Socket s = new Socket(worker.ip, worker.port);
-                     ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
-                     ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
-                    out.writeObject("GET_STATS");
-                    out.flush();
-                    Map<String, Double> workerMap = (Map<String, Double>) in.readObject();
-                    synchronized (globalProfits) {
-                        for (Map.Entry<String, Double> entry : workerMap.entrySet()) {
-                            globalProfits.put(entry.getKey(), globalProfits.getOrDefault(entry.getKey(), 0.0) + entry.getValue());
-                        }
-                    }
-                } catch (Exception e) { e.printStackTrace(); }
+                     ObjectOutputStream wOut = new ObjectOutputStream(s.getOutputStream());
+                     ObjectInputStream wIn = new ObjectInputStream(s.getInputStream())) {
+                    wOut.writeObject(workerCommand);
+                    wOut.flush();
+                    Object result = wIn.readObject();
+                    synchronized (mapResults) { mapResults.add(result); }
+                } catch (Exception e) {
+                    System.err.println("Worker " + worker.port + " error during stats: " + e.getMessage());
+                    synchronized (mapResults) { mapResults.add(new HashMap<String, Double>()); }
+                }
             });
             t.start();
             threads.add(t);
         }
         for (Thread t : threads) { try { t.join(); } catch (InterruptedException e) {} }
-        return globalProfits;
+
+        // REDUCE phase
+        try (Socket s = new Socket(REDUCER_IP, REDUCER_PORT);
+             ObjectOutputStream rOut = new ObjectOutputStream(s.getOutputStream());
+             ObjectInputStream rIn = new ObjectInputStream(s.getInputStream())) {
+            rOut.writeObject("REDUCE_STATS");
+            rOut.writeObject(mapResults);
+            rOut.flush();
+            return (Map<String, Double>) rIn.readObject();
+        } catch (Exception e) {
+            System.err.println("Reducer unavailable, combining locally: " + e.getMessage());
+            Map<String, Double> combined = new HashMap<>();
+            for (Object r : mapResults) {
+                if (r instanceof Map) {
+                    Map<String, Double> m = (Map<String, Double>) r;
+                    for (Map.Entry<String, Double> entry : m.entrySet()) {
+                        combined.put(entry.getKey(),
+                            combined.getOrDefault(entry.getKey(), 0.0) + entry.getValue());
+                    }
+                }
+            }
+            return combined;
+        }
     }
 
     private void forwardGameToWorker(Game game, WorkerInfo worker) throws IOException {
         try (Socket s = new Socket(worker.ip, worker.port);
-             ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream())){
+             ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream())) {
             out.writeObject(game);
             out.flush();
         }
@@ -169,33 +241,23 @@ public class Master {
     }
 
     private double forwardPlayToWorker(PlayRequest req, WorkerInfo worker) {
-    Socket s = null;
-    try {
-        s = new Socket();
-        // Timeout 2 δευτερόλεπτα για να μην περιμένει για πάντα αν ο worker είναι offline
-        s.connect(new InetSocketAddress(worker.ip, worker.port), 2000);
-        
-        ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
-        out.flush(); // Στέλνουμε τον header αμέσως
-        
-        ObjectInputStream in = new ObjectInputStream(s.getInputStream());
-
-        // Στέλνουμε το String και μετά το Object
-        out.writeObject("PLAY");
-        out.flush();
-        
-        out.writeObject(req);
-        out.flush();
-        
-        // Διάβασμα αποτελέσματος
-        double result = in.readDouble();
-        return result;
-
-    } catch (Exception e) {
-        System.err.println("Master Error: Could not connect to Worker at " + worker.port + " -> " + e.getMessage());
-        return 0.0;
-    } finally {
-        try { if (s != null) s.close(); } catch (IOException e) {}
+        Socket s = null;
+        try {
+            s = new Socket();
+            s.connect(new InetSocketAddress(worker.ip, worker.port), 2000);
+            ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
+            out.flush();
+            ObjectInputStream in = new ObjectInputStream(s.getInputStream());
+            out.writeObject("PLAY");
+            out.flush();
+            out.writeObject(req);
+            out.flush();
+            return in.readDouble();
+        } catch (Exception e) {
+            System.err.println("Master Error: Could not connect to Worker at " + worker.port + " -> " + e.getMessage());
+            return 0.0;
+        } finally {
+            try { if (s != null) s.close(); } catch (IOException e) {}
+        }
     }
-}
 }

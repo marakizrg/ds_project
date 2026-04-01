@@ -13,15 +13,18 @@ public class ManagerConsole {
 
         while (true) {
             System.out.println("\nSelect Action:");
-            System.out.println("1. Add New Game");
-            System.out.println("2. View Profits (MapReduce)");
-            System.out.println("3. Remove Game");
-            System.out.println("4. Modify Game Risk Level");
-            System.out.println("5. Exit");
+            System.out.println("1. Add New Game (from JSON file)");
+            System.out.println("2. View Profits by Game (MapReduce)");
+            System.out.println("3. View Profits by Provider");
+            System.out.println("4. View Profits for Player");
+            System.out.println("5. View All Player Profits");
+            System.out.println("6. Remove Game");
+            System.out.println("7. Modify Game Risk Level");
+            System.out.println("8. Exit");
             System.out.print("Choice: ");
 
             if (!scanner.hasNextInt()) {
-                System.out.println("Invalid input! Please enter a number (1-5).");
+                System.out.println("Invalid input! Please enter a number (1-8).");
                 scanner.next();
                 continue;
             }
@@ -29,8 +32,8 @@ public class ManagerConsole {
             int choice = scanner.nextInt();
             scanner.nextLine();
 
-            if (choice < 1 || choice > 5) {
-                System.out.println("Invalid choice! Please select 1-5.");
+            if (choice < 1 || choice > 8) {
+                System.out.println("Invalid choice! Please select 1-8.");
                 continue;
             }
 
@@ -39,8 +42,14 @@ public class ManagerConsole {
             } else if (choice == 2) {
                 viewProfits();
             } else if (choice == 3) {
-                removeGame(scanner);
+                viewProfitsByProvider();
             } else if (choice == 4) {
+                viewProfitsByPlayer(scanner);
+            } else if (choice == 5) {
+                viewAllPlayerProfits();
+            } else if (choice == 6) {
+                removeGame(scanner);
+            } else if (choice == 7) {
                 modifyGameRisk(scanner);
             } else {
                 System.out.println("Exiting Manager Console...");
@@ -49,84 +58,90 @@ public class ManagerConsole {
         }
     }
 
+    // Simple JSON parser helpers (no external libraries, case-insensitive keys)
+    private static String extractJsonString(String json, String key) {
+        String jsonLower = json.toLowerCase();
+        String search = "\"" + key.toLowerCase() + "\"";
+        int keyIdx = jsonLower.indexOf(search);
+        if (keyIdx < 0) return "";
+        int colonIdx = json.indexOf(':', keyIdx + search.length());
+        if (colonIdx < 0) return "";
+        int quoteStart = json.indexOf('"', colonIdx + 1);
+        if (quoteStart < 0) return "";
+        int quoteEnd = json.indexOf('"', quoteStart + 1);
+        if (quoteEnd < 0) return "";
+        return json.substring(quoteStart + 1, quoteEnd);
+    }
+
+    private static double extractJsonNumber(String json, String key) {
+        String jsonLower = json.toLowerCase();
+        String search = "\"" + key.toLowerCase() + "\"";
+        int keyIdx = jsonLower.indexOf(search);
+        if (keyIdx < 0) return 0.0;
+        int colonIdx = json.indexOf(':', keyIdx + search.length());
+        if (colonIdx < 0) return 0.0;
+        // skip whitespace
+        int start = colonIdx + 1;
+        while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == '\t'
+                || json.charAt(start) == '\n' || json.charAt(start) == '\r')) {
+            start++;
+        }
+        int end = start;
+        while (end < json.length() && (Character.isDigit(json.charAt(end))
+                || json.charAt(end) == '.' || json.charAt(end) == '-')) {
+            end++;
+        }
+        try {
+            return Double.parseDouble(json.substring(start, end));
+        } catch (NumberFormatException e) {
+            return 0.0;
+        }
+    }
+
     private static void addNewGame(Scanner scanner) {
+        System.out.print("\nEnter path to JSON game file: ");
+        String filePath = scanner.nextLine().trim();
+
+        // Read file content
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line).append("\n");
+            }
+        } catch (IOException e) {
+            System.err.println("Error reading file: " + e.getMessage());
+            return;
+        }
+
+        String json = sb.toString();
+
+        String name      = extractJsonString(json, "GameName");
+        String provider  = extractJsonString(json, "ProviderName");
+        String logoPath  = extractJsonString(json, "GameLogo");
+        String risk      = extractJsonString(json, "RiskLevel");
+        String secretKey = extractJsonString(json, "HashKey");
+        int stars        = (int) extractJsonNumber(json, "Stars");
+        int noOfVotes    = (int) extractJsonNumber(json, "NoOfVotes");
+        double minBet    = extractJsonNumber(json, "MinBet");
+        double maxBet    = extractJsonNumber(json, "MaxBet");
+
+        if (name.isEmpty() || provider.isEmpty() || risk.isEmpty() || secretKey.isEmpty()) {
+            System.err.println("Error: JSON file is missing required fields (gameName, providerName, riskLevel, secretKey).");
+            return;
+        }
+        if (logoPath.isEmpty()) logoPath = "N/A";
+        if (stars < 1 || stars > 5) { System.err.println("Error: stars must be 1-5."); return; }
+        if (minBet <= 0) { System.err.println("Error: minBet must be positive."); return; }
+        if (maxBet < minBet) { System.err.println("Error: maxBet must be >= minBet."); return; }
+
+        Game newGame = new Game(name, provider, stars, noOfVotes, logoPath, minBet, maxBet, risk, secretKey);
+
         try (Socket socket = new Socket(MASTER_IP, MASTER_PORT);
              ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
-
-            System.out.println("\n--- Adding New Game ---");
-            System.out.print("Enter Game Name: ");
-            String name = scanner.nextLine();
-
-            System.out.print("Enter Provider: ");
-            String provider = scanner.nextLine();
-
-            int stars;
-            while (true) {
-                System.out.print("Enter Stars (1-5): ");
-                if (scanner.hasNextInt()) {
-                    stars = scanner.nextInt();
-                    if (stars >= 1 && stars <= 5) { scanner.nextLine(); break; }
-                } else { scanner.next(); }
-                System.out.println("Invalid stars! Please enter a number between 1 and 5.");
-            }
-
-            int noOfVotes;
-            while (true) {
-                System.out.print("Enter Number of Votes: ");
-                if (scanner.hasNextInt()) {
-                    noOfVotes = scanner.nextInt();
-                    if (noOfVotes >= 0) { scanner.nextLine(); break; }
-                } else { scanner.next(); }
-                System.out.println("Invalid input! Please enter a non-negative number.");
-            }
-
-            System.out.print("Enter Game Logo Path (or press Enter to skip): ");
-            String logoPath = scanner.nextLine().trim();
-            if (logoPath.isEmpty()) logoPath = "N/A";
-
-            double minBet = 0;
-            while (true) {
-                System.out.print("Enter Min Bet: ");
-                if (scanner.hasNextDouble()) {
-                    minBet = scanner.nextDouble();
-                    if (minBet > 0) { scanner.nextLine(); break; }
-                    System.out.println("Min bet must be positive.");
-                } else {
-                    System.out.println("Error: Please enter a numeric value (e.g., 2.5)");
-                    scanner.next();
-                }
-            }
-
-            double maxBet = 0;
-            while (true) {
-                System.out.print("Enter Max Bet: ");
-                if (scanner.hasNextDouble()) {
-                    maxBet = scanner.nextDouble();
-                    if (maxBet >= minBet) { scanner.nextLine(); break; }
-                    System.out.println("Max bet must be >= min bet (" + minBet + ").");
-                } else {
-                    System.out.println("Error: Please enter a numeric value.");
-                    scanner.next();
-                }
-            }
-
-            String risk = "";
-            while (true) {
-                System.out.print("Enter Risk Level (low, medium, high): ");
-                risk = scanner.nextLine().toLowerCase().trim();
-                if (risk.equals("low") || risk.equals("medium") || risk.equals("high")) break;
-                System.out.println("Invalid risk! Choose between: low, medium, high");
-            }
-
-            System.out.print("Enter Secret Key (HashKey): ");
-            String secretKey = scanner.nextLine().trim();
-
-            Game newGame = new Game(name, provider, stars, noOfVotes, logoPath, minBet, maxBet, risk, secretKey);
             out.writeObject(newGame);
             out.flush();
-
             System.out.println("Game \"" + name + "\" added successfully! [betCategory=" + newGame.betCategory + ", jackpot=" + newGame.jackpot + "]");
-
         } catch (Exception e) {
             System.err.println("Error adding game: " + e.getMessage());
         }
@@ -192,22 +207,114 @@ public class ManagerConsole {
             if (response instanceof Map) {
                 Map<String, Double> stats = (Map<String, Double>) response;
 
-                System.out.println("\n--- Global Statistics (System Profits/Losses) ---");
+                System.out.println("\n--- Global Statistics (System Profits/Losses by Game) ---");
                 if (stats.isEmpty()) {
                     System.out.println("No betting data available yet.");
                 } else {
                     double totalPlatformProfit = 0;
                     for (Map.Entry<String, Double> entry : stats.entrySet()) {
-                        System.out.printf("Game: %-15s | Profit: %10.2f tokens\n",
+                        System.out.printf("Game: %-20s | Profit: %10.2f tokens\n",
                                           entry.getKey(), entry.getValue());
                         totalPlatformProfit += entry.getValue();
                     }
-                    System.out.println("-------------------------------------------------");
+                    System.out.println("----------------------------------------------------------");
                     System.out.printf("TOTAL PLATFORM PROFIT: %.2f tokens\n", totalPlatformProfit);
                 }
             }
         } catch (Exception e) {
             System.err.println("Error fetching stats: " + e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void viewProfitsByProvider() {
+        try (Socket socket = new Socket(MASTER_IP, MASTER_PORT);
+             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+             ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+
+            out.writeObject("VIEW_PROFITS_PROVIDER");
+            out.flush();
+
+            Object response = in.readObject();
+            if (response instanceof Map) {
+                Map<String, Double> stats = (Map<String, Double>) response;
+
+                System.out.println("\n--- Profits by Provider ---");
+                if (stats.isEmpty()) {
+                    System.out.println("No betting data available yet.");
+                } else {
+                    double total = 0;
+                    for (Map.Entry<String, Double> entry : stats.entrySet()) {
+                        System.out.printf("Provider: %-20s | Profit: %10.2f tokens\n",
+                                          entry.getKey(), entry.getValue());
+                        total += entry.getValue();
+                    }
+                    System.out.println("----------------------------------------------------------");
+                    System.out.printf("TOTAL: %.2f tokens\n", total);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error fetching provider stats: " + e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void viewProfitsByPlayer(Scanner scanner) {
+        System.out.print("\nEnter Player ID: ");
+        String playerId = scanner.nextLine().trim();
+
+        try (Socket socket = new Socket(MASTER_IP, MASTER_PORT);
+             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+             ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+
+            out.writeObject("VIEW_PROFITS_PLAYER:" + playerId);
+            out.flush();
+
+            Object response = in.readObject();
+            if (response instanceof Map) {
+                Map<String, Double> stats = (Map<String, Double>) response;
+
+                System.out.println("\n--- Platform Net Loss for Player: " + playerId + " ---");
+                if (stats.isEmpty()) {
+                    System.out.println("No data for player: " + playerId);
+                } else {
+                    for (Map.Entry<String, Double> entry : stats.entrySet()) {
+                        // Positive value = platform profit (player's net loss)
+                        System.out.printf("Player: %-15s | Net Loss (platform profit): %10.2f tokens\n",
+                                          entry.getKey(), entry.getValue());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error fetching player stats: " + e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void viewAllPlayerProfits() {
+        try (Socket socket = new Socket(MASTER_IP, MASTER_PORT);
+             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+             ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+
+            out.writeObject("VIEW_ALL_PLAYERS");
+            out.flush();
+
+            Object response = in.readObject();
+            if (response instanceof Map) {
+                Map<String, Double> stats = (Map<String, Double>) response;
+
+                System.out.println("\n--- All Player Profits/Losses (from platform perspective) ---");
+                if (stats.isEmpty()) {
+                    System.out.println("No player data available yet.");
+                } else {
+                    for (Map.Entry<String, Double> entry : stats.entrySet()) {
+                        System.out.printf("Player: %-15s | Net Loss: %10.2f tokens\n",
+                                          entry.getKey(), entry.getValue());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error fetching all player stats: " + e.getMessage());
         }
     }
 }

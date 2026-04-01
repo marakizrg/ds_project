@@ -2,14 +2,16 @@ import java.io.Serializable;
 
 public class SearchFilters implements Serializable {
     private static final long serialVersionUID = 1L;
-    
+
     public int minStars;        // 1-5 αστέρια [cite: 20]
     public String riskLevel;    // low, medium, high [cite: 18]
     public String betCategory;  // $, $$, $$$ [cite: 17]
+    public String playerId;     // Το ID του παίκτη
 
-    public SearchFilters(int minStars, String riskLevel, String betCategory) {
+    public SearchFilters(int minStars, String riskLevel, String betCategory, String playerId) {
         this.minStars = minStars;
         this.riskLevel = riskLevel;
         this.betCategory = betCategory;
+        this.playerId = playerId;
     }
 }
