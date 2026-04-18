@@ -14,11 +14,18 @@ public class Worker {
     private final Map<String, Queue<Integer>> gameBuffers = new HashMap<>(); // secretKey -> buffer τυχαίων αριθμών για κάθε παιχνίδι
     private final int BUFFER_SIZE = 50; // μέγιστος αριθμός τυχαίων αριθμων στον buffer πριν σταματήσει ο Producer
 
-    private static final String SRG_IP   = "localhost";
-    private static final int    SRG_PORT = 4321;
+    private static String SRG_IP   = "localhost"; // ορίζεται από args
+    private static final int SRG_PORT = 4321;
 
     public static void main(String[] args) {
-        int port = args.length > 0 ? Integer.parseInt(args[0]) : 6001;
+        // Χρήση: java Worker <port> <srg_ip>
+        if (args.length < 2) {
+            System.out.println("Χρήση: java Worker <port> <srg_ip>");
+            System.out.println("Παράδειγμα: java Worker 6001 192.168.1.11");
+            return;
+        }
+        int port = Integer.parseInt(args[0]);
+        SRG_IP   = args[1];
         new Worker().startWorker(port);
     }
 

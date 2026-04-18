@@ -4,21 +4,30 @@ import java.util.*;
 
 // για αναζήτηση και στατιστικά εκτελεί MapReduce (Map στους Workers, Reduce στον Reducer)
 public class Master {
-    private static final int    PORT         = 9000;
-    private static final String REDUCER_IP   = "localhost";
-    private static final int    REDUCER_PORT = 8500;
+    private static final int PORT         = 9000;
+    private static final int REDUCER_PORT = 8500;
+
+    private static String reducerIp = "localhost"; // ορίζεται από args
 
     private List<WorkerInfo> workers = new ArrayList<>(); // λίστα με όλους τους Workers
 
     @SuppressWarnings("unchecked")
     public static void main(String[] args) {
         Master master = new Master();
-        if (args.length == 0) {
-            System.out.println("Χρήση: java Master <port_worker1> <port_worker2> ...");
+        // Χρήση: java Master <reducer_ip> <worker1_ip:port> <worker2_ip:port> ...
+        if (args.length < 2) {
+            System.out.println("Χρήση: java Master <reducer_ip> <worker1_ip:port> <worker2_ip:port> ...");
+            System.out.println("Παράδειγμα: java Master 192.168.1.10 192.168.1.11:6001 192.168.1.12:6002");
             return;
         }
-        for (String port : args) {
-            master.workers.add(new WorkerInfo("127.0.0.1", Integer.parseInt(port)));
+        reducerIp = args[0];
+        for (int i = 1; i < args.length; i++) {
+            String[] parts = args[i].split(":");
+            if (parts.length != 2) {
+                System.out.println("Λάθος μορφή worker: " + args[i] + " (αναμένεται ip:port)");
+                return;
+            }
+            master.workers.add(new WorkerInfo(parts[0], Integer.parseInt(parts[1])));
         }
         master.startServer();
     }
@@ -147,7 +156,7 @@ public class Master {
         for (Thread t : threads) { try { t.join(); } catch (InterruptedException e) {} }
 
         // στέλνω όλα τα αποτελέσματα στον Reducer για την τελική ένωση
-        try (Socket s = new Socket(REDUCER_IP, REDUCER_PORT);
+        try (Socket s = new Socket(reducerIp, REDUCER_PORT);
              ObjectOutputStream rOut = new ObjectOutputStream(s.getOutputStream());
              ObjectInputStream  rIn  = new ObjectInputStream(s.getInputStream())) {
             rOut.writeObject("REDUCE_SEARCH");
@@ -191,7 +200,7 @@ public class Master {
         }
         for (Thread t : threads) { try { t.join(); } catch (InterruptedException e) {} }
 
-        try (Socket s = new Socket(REDUCER_IP, REDUCER_PORT);
+        try (Socket s = new Socket(reducerIp, REDUCER_PORT);
              ObjectOutputStream rOut = new ObjectOutputStream(s.getOutputStream());
              ObjectInputStream  rIn  = new ObjectInputStream(s.getInputStream())) {
             rOut.writeObject("REDUCE_STATS");

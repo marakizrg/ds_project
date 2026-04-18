@@ -5,8 +5,8 @@ import java.util.Scanner;
 
 // εφαρμογή παίκτη — συνδέεται στον Master για αναζήτηση παιχνιδιών και ποντάρισμα
 public class DummyPlayerApp {
-    private static final String MASTER_IP   = "localhost";
-    private static final int    MASTER_PORT = 9000;
+    private static String MASTER_IP   = "localhost"; // ορίζεται από args
+    private static final int MASTER_PORT = 9000;
 
     private static List<Game> searchResults    = null;  // αποτελέσματα της τελευταίας αναζήτησης
     private static boolean    searchDone       = false; // γίνεται true όταν το background thread τελειώσει
@@ -14,6 +14,13 @@ public class DummyPlayerApp {
     private static final Object searchLock = new Object(); // monitor για wait/notifyAll μεταξύ main thread και search thread
 
     public static void main(String[] args) throws InterruptedException {
+        // Χρήση: java DummyPlayerApp <master_ip>
+        if (args.length < 1) {
+            System.out.println("Χρήση: java DummyPlayerApp <master_ip>");
+            System.out.println("Παράδειγμα: java DummyPlayerApp 192.168.1.10");
+            return;
+        }
+        MASTER_IP = args[0];
         Scanner scanner = new Scanner(System.in);
         System.out.println("--- Καλωσήρθατε στο Online Gaming (Dummy App) ---");
 

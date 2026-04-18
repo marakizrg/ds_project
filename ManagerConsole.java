@@ -5,10 +5,17 @@ import java.util.Scanner;
 
 // εφαρμογή διαχειριστή — συνδέεται στον Master για να διαχειριστεί τα παιχνίδια και να δει κέρδη
 public class ManagerConsole {
-    private static final String MASTER_IP   = "localhost";
-    private static final int    MASTER_PORT = 9000;
+    private static String MASTER_IP   = "localhost"; // ορίζεται από args
+    private static final int MASTER_PORT = 9000;
 
     public static void main(String[] args) {
+        // Χρήση: java ManagerConsole <master_ip>
+        if (args.length < 1) {
+            System.out.println("Χρήση: java ManagerConsole <master_ip>");
+            System.out.println("Παράδειγμα: java ManagerConsole 192.168.1.10");
+            return;
+        }
+        MASTER_IP = args[0];
         Scanner scanner = new Scanner(System.in);
         System.out.println("--- Λειτουργία Manager ---");
 
