@@ -3,31 +3,38 @@ import java.net.*;
 import java.security.MessageDigest;
 import java.util.Random;
 
+// παράγει τυχαίους αριθμούς και τους στέλνει στους Workers μαζί με SHA-256 hash
+// έτσι ωστε ο Worker μπορεί να ελέγξει ότι ο αριθμός δεν αλλοιώθηκε στη μεταφορά
 public class SRGServer {
     public static void main(String[] args) throws IOException {
-        ServerSocket server = new ServerSocket(4321); // Τυχαία θύρα
-        System.out.println("SRG Server started...");
+        ServerSocket server = new ServerSocket(4321);
+        System.out.println("SRG Server started on port 4321...");
+
         while (true) {
             Socket workerSocket = server.accept();
-            new Thread(() -> handleWorker(workerSocket)).start(); // Πολυνηματικότητα 
+            new Thread(() -> handleWorker(workerSocket)).start();
         }
     }
 
+    // εξυπηρετεί έναν Worker: παράγει τυχαίο αριθμό, υπολογίζει το hash του και τα στέλνει
     private static void handleWorker(Socket socket) {
-        try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
+        try (ObjectInputStream in   = new ObjectInputStream(socket.getInputStream());
              ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
-            
-            String secret = in.readUTF(); // Λαμβάνει το secret του παιχνιδιού [cite: 82]
-            int randomNumber = new Random().nextInt(1000);
-            
-            // Δημιουργία SHA-256(αριθμός + secret) 
+
+            String secret = in.readUTF(); // το secretKey του παιχνιδιού το οποιο χρησιμοποιείται στο hash
+
+            int randomNumber = new Random().nextInt(1000); // τυχαίος αριθμός στο [0, 999]
+
             String combined = randomNumber + secret;
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(combined.getBytes("UTF-8"));
-            
+            byte[] hash = digest.digest(combined.getBytes("UTF-8")); // SHA-256(αριθμός + secret)
+
             out.writeInt(randomNumber);
-            out.writeObject(hash);
+            out.writeObject(hash); // στέλνω και τα δύο ο Worker θα επαληθεύσει τοπικά
             out.flush();
-        } catch (Exception e) { e.printStackTrace(); }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

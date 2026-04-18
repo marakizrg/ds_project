@@ -2,6 +2,7 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 
+// ο Reducer server ενώνει τα μερικά αποτελέσματα από όλους τους Workers σε ένα τελικό
 public class Reducer {
     private static final int PORT = 8500;
 
@@ -9,6 +10,7 @@ public class Reducer {
         new Reducer().startServer();
     }
 
+    // ξεκινάει τον server και δέχεται συνδέσεις κάθε αίτημα το χειρίζεται ενα ξεχωριστό thread
     public void startServer() throws IOException {
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
             System.out.println("Reducer Server running on port " + PORT + "...");
@@ -25,31 +27,35 @@ public class Reducer {
 
         @Override
         @SuppressWarnings("unchecked")
+        // χειρίζεται ένα αίτημα reduce για δυο λογους: αναζήτηση παιχνιδιών ή στατιστικά κερδών
         public void run() {
             try {
                 ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
                 out.flush();
                 ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
 
-                String msg = (String) in.readObject();
+                String msg = (String) in.readObject(); // τι τύπου reduce ζητάει ο Master
 
                 if (msg.equals("REDUCE_SEARCH")) {
-                    // Λαμβάνει List<Object> όπου κάθε στοιχείο είναι List<Game> από έναν Worker
-                    List<Object> mapResults = (List<Object>) in.readObject();
+                    // ενώνει τις λίστες παιχνιδιών από κάθε Worker σε μία ενιαία λίστα
+                    List<Object> mapResults = (List<Object>) in.readObject(); // μία List<Game> ανά Worker
                     List<Game> combined = new ArrayList<>();
+
                     for (Object partial : mapResults) {
                         if (partial instanceof List) {
                             combined.addAll((List<Game>) partial);
                         }
                     }
+
                     out.writeObject(combined);
                     out.flush();
-                    System.out.println("[Reducer] REDUCE_SEARCH: combined " + combined.size() + " games.");
+                    System.out.println("[Reducer] REDUCE_SEARCH: συνδύασε " + combined.size() + " παιχνίδια.");
 
                 } else if (msg.equals("REDUCE_STATS")) {
-                    // Λαμβάνει List<Object> όπου κάθε στοιχείο είναι Map<String,Double> από έναν Worker
-                    List<Object> mapResults = (List<Object>) in.readObject();
+                    // αθροίζει τα κέρδη/ζημιές ανά κλειδί (παιχνίδι η παίκτης) από όλους τους Workers
+                    List<Object> mapResults = (List<Object>) in.readObject(); // ένα Map<String,Double> ανά Worker
                     Map<String, Double> combined = new HashMap<>();
+
                     for (Object partial : mapResults) {
                         if (partial instanceof Map) {
                             Map<String, Double> workerMap = (Map<String, Double>) partial;
@@ -59,16 +65,17 @@ public class Reducer {
                             }
                         }
                     }
+
                     out.writeObject(combined);
                     out.flush();
-                    System.out.println("[Reducer] REDUCE_STATS: combined " + combined.size() + " entries.");
+                    System.out.println("[Reducer] REDUCE_STATS: συνδύασε " + combined.size() + " εγγραφές.");
 
                 } else {
-                    System.err.println("[Reducer] Unknown message: " + msg);
+                    System.err.println("[Reducer] Άγνωστο μήνυμα: " + msg);
                 }
 
             } catch (Exception e) {
-                System.err.println("[Reducer] Error: " + e.getMessage());
+                System.err.println("[Reducer] Σφάλμα: " + e.getMessage());
             } finally {
                 try { socket.close(); } catch (IOException e) {}
             }

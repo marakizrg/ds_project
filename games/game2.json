@@ -1,9 +1,9 @@
 {
-    "GameName": "Dragon's Fortune",
+    "GameName": "Sandy's Game",
     "ProviderName": "netEnt",
     "Stars": 4,
     "NoOfVotes": 230,
-    "GameLogo": "/usr/bin/images/dragons_fortune.png",
+    "GameLogo": "/Users/admin/Documents/οπα/καταν/ds_project/games/sandygame.png",
     "MinBet": 0.5,
     "MaxBet": 50,
     "RiskLevel": "medium",

@@ -1,9 +1,9 @@
 {
-    "GameName": "Cosmic Spin",
+    "GameName": "Nikos' Game",
     "ProviderName": "pragmaticPlay",
     "Stars": 5,
     "NoOfVotes": 1024,
-    "GameLogo": "/usr/bin/images/cosmic_spin.png",
+    "GameLogo": "/Users/admin/Documents/οπα/καταν/ds_project/games/nikosgame.png",
     "MinBet": 0.2,
     "MaxBet": 100,
     "RiskLevel": "high",

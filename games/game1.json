@@ -1,9 +1,9 @@
 {
-    "GameName": "My First Game",
+    "GameName": "Maria's Game",
     "ProviderName": "netEnt",
     "Stars": 3,
     "NoOfVotes": 15,
-    "GameLogo": "/usr/bin/images/gameLogo.png",
+    "GameLogo": "/Users/admin/Documents/οπα/καταν/ds_project/games/mariagame.png",
     "MinBet": 0.1,
     "MaxBet": 10,
     "RiskLevel": "low",

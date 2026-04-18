@@ -1,9 +1,9 @@
 {
-    "GameName": "Golden Pharaoh",
+    "GameName": "AsoeeCore",
     "ProviderName": "microgaming",
     "Stars": 2,
     "NoOfVotes": 87,
-    "GameLogo": "/usr/bin/images/golden_pharaoh.png",
+    "GameLogo": "/Users/admin/Documents/οπα/καταν/ds_project/games/asoeecoregame.png",
     "MinBet": 1.0,
     "MaxBet": 200,
     "RiskLevel": "low",
