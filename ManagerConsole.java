@@ -5,27 +5,27 @@ import java.util.Scanner;
 
 public class ManagerConsole {
     private static final String MASTER_IP = "localhost";
-    private static final int MASTER_PORT = 9000;
+    private static final int MASTER_PORT = 9000; 
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
-        System.out.println("--- Online Gaming Platform Manager ---");
+        System.out.println("--- Manager Welcome ---");
 
         while (true) {
             System.out.println("\nSelect Action:");
             System.out.println("1. Add New Game (from JSON file)");
-            System.out.println("2. View Profits by Game (MapReduce)");
+            System.out.println("2. View Profits by Game");
             System.out.println("3. View Profits by Provider");
             System.out.println("4. View Profits for Player");
             System.out.println("5. View All Player Profits");
             System.out.println("6. Remove Game");
             System.out.println("7. Modify Game Risk Level");
             System.out.println("8. Exit");
-            System.out.print("Choice: ");
+            System.out.print("\nChoice: ");
 
             if (!scanner.hasNextInt()) {
                 System.out.println("Invalid input! Please enter a number (1-8).");
-                scanner.next();
+                scanner.next();// consume the invalid input
                 continue;
             }
 

@@ -1,0 +1,11 @@
+{
+    "GameName": "Dragon's Fortune",
+    "ProviderName": "netEnt",
+    "Stars": 4,
+    "NoOfVotes": 230,
+    "GameLogo": "/usr/bin/images/dragons_fortune.png",
+    "MinBet": 0.5,
+    "MaxBet": 50,
+    "RiskLevel": "medium",
+    "hashKey": "str_7821_k5"
+  }

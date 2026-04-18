@@ -1,0 +1,11 @@
+{
+    "GameName": "Cosmic Spin",
+    "ProviderName": "pragmaticPlay",
+    "Stars": 5,
+    "NoOfVotes": 1024,
+    "GameLogo": "/usr/bin/images/cosmic_spin.png",
+    "MinBet": 0.2,
+    "MaxBet": 100,
+    "RiskLevel": "high",
+    "hashKey": "str_9932_k8"
+  }

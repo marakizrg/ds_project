@@ -1,0 +1,11 @@
+{
+    "GameName": "Golden Pharaoh",
+    "ProviderName": "microgaming",
+    "Stars": 2,
+    "NoOfVotes": 87,
+    "GameLogo": "/usr/bin/images/golden_pharaoh.png",
+    "MinBet": 1.0,
+    "MaxBet": 200,
+    "RiskLevel": "low",
+    "hashKey": "str_3310_k1"
+  }

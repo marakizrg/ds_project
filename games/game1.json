@@ -1,0 +1,11 @@
+{
+    "GameName": "My First Game",
+    "ProviderName": "netEnt",
+    "Stars": 3,
+    "NoOfVotes": 15,
+    "GameLogo": "/usr/bin/images/gameLogo.png",
+    "MinBet": 0.1,
+    "MaxBet": 10,
+    "RiskLevel": "low",
+    "hashKey": "str_4455_k2"
+}
