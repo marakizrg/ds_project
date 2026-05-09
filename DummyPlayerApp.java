@@ -13,6 +13,8 @@ public class DummyPlayerApp {
     private static boolean    searchInProgress = false; // true ενώ τρέχει η αναζήτηση στο παρασκήνιο
     private static final Object searchLock = new Object(); // monitor για wait/notifyAll μεταξύ main thread και search thread
 
+    private static double balance = 0.0; // υπόλοιπο tokens του παίκτη — αρχικά 0
+
     public static void main(String[] args) throws InterruptedException {
         // Χρήση: java DummyPlayerApp <master_ip>
         if (args.length < 1) {
@@ -31,11 +33,13 @@ public class DummyPlayerApp {
 
         while (true) {
             System.out.println("\n========= ΚΥΡΙΟ ΜΕΝΟΥ =========");
+            System.out.printf("Υπόλοιπο: %.2f tokens%n", balance);
             System.out.println("1. Αναζήτηση παιχνιδιών με φίλτρα");
             System.out.println("2. Εμφάνιση αποτελεσμάτων αναζήτησης");
             System.out.println("3. Ποντάρισμα σε παιχνίδι");
             System.out.println("4. Αξιολόγηση τελευταίου παιχνιδιού");
-            System.out.println("5. Έξοδος");
+            System.out.println("5. Προσθήκη tokens στο υπόλοιπο");
+            System.out.println("6. Έξοδος");
 
             // εμφανίζω στο menu αν η αναζήτηση τρέχει ακόμα ή αν έχουν έρθει αποτελέσματα
             synchronized (searchLock) {
@@ -83,11 +87,15 @@ public class DummyPlayerApp {
                     break;
 
                 case 5:
+                    addTokens(scanner);
+                    break;
+
+                case 6:
                     System.out.println("Αντίο!");
                     return;
 
                 default:
-                    System.out.println("Μη έγκυρη επιλογή. Επιλέξτε 1-5.");
+                    System.out.println("Μη έγκυρη επιλογή. Επιλέξτε 1-6.");
             }
         }
     }
@@ -217,13 +225,20 @@ public class DummyPlayerApp {
 
         Game selected = games.get(gameIdx);
 
+        System.out.printf("Τρέχον υπόλοιπο: %.2f tokens%n", balance);
+
         double bet = 0;
         while (true) {
             System.out.print("Δώστε ποσό πονταρίσματος (ελάχιστο " + selected.minBet + "): ");
             try {
                 bet = Double.parseDouble(scanner.nextLine().trim());
-                if (bet >= selected.minBet) break;
-                System.out.println("Πολύ χαμηλό. Ελάχιστο: " + selected.minBet);
+                if (bet < selected.minBet) {
+                    System.out.println("Πολύ χαμηλό. Ελάχιστο: " + selected.minBet);
+                } else if (bet > balance) {
+                    System.out.println("Ανεπαρκές υπόλοιπο. Έχετε: " + balance + " tokens.");
+                } else {
+                    break;
+                }
             } catch (NumberFormatException e) {
                 System.out.println("Λάθος ποσό.");
             }
@@ -239,12 +254,13 @@ public class DummyPlayerApp {
             playOut.flush();
 
             double result = playIn.readDouble(); // πόσα κέρδισα
+            balance = balance - bet + result;    // αφαιρώ το ποντάρισμα και προσθέτω τα κέρδη
             if (result > bet) {
-                System.out.println("ΣΥΓΧΑΡΗΤΗΡΙΑ! Κερδίσατε: " + result + " tokens!");
+                System.out.printf("ΣΥΓΧΑΡΗΤΗΡΙΑ! Κερδίσατε: %.2f tokens! Νέο υπόλοιπο: %.2f%n", result, balance);
             } else if (result > 0) {
-                System.out.println("Πήρατε πίσω: " + result + " tokens.");
+                System.out.printf("Πήρατε πίσω: %.2f tokens. Νέο υπόλοιπο: %.2f%n", result, balance);
             } else {
-                System.out.println("Χάσατε. Καλύτερη τύχη την επόμενη φορά!");
+                System.out.printf("Χάσατε. Νέο υπόλοιπο: %.2f tokens.%n", balance);
             }
         } catch (Exception e) {
             System.err.println("Σφάλμα κατά το ποντάρισμα: " + e.getMessage());
@@ -282,6 +298,23 @@ public class DummyPlayerApp {
         } catch (Exception e) {
             System.err.println("Σφάλμα αξιολόγησης: " + e.getMessage());
         }
+    }
+
+    // προσθέτει tokens στο balance του παίκτη
+    private static void addTokens(Scanner scanner) {
+        double amount = 0;
+        while (true) {
+            System.out.print("Πόσα tokens θέλετε να προσθέσετε; ");
+            try {
+                amount = Double.parseDouble(scanner.nextLine().trim());
+                if (amount > 0) break;
+                System.out.println("Το ποσό πρέπει να είναι θετικό.");
+            } catch (NumberFormatException e) {
+                System.out.println("Μη έγκυρο ποσό.");
+            }
+        }
+        balance += amount;
+        System.out.printf("Προστέθηκαν %.2f tokens. Νέο υπόλοιπο: %.2f tokens.%n", amount, balance);
     }
 
     // εκτελείται μέσα στο background thread — κάνει την πραγματική TCP επικοινωνία με τον Master

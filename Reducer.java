@@ -36,7 +36,10 @@ public class Reducer {
 
                 String msg = (String) in.readObject(); // τι τύπου reduce ζητάει ο Master
 
-                if (msg.equals("REDUCE_SEARCH")) {
+                if (msg.startsWith("REDUCE_SEARCH")) {
+                    // εξάγω το requestId αν υπάρχει (μορφή "REDUCE_SEARCH:<requestId>")
+                    String requestId = msg.contains(":") ? msg.substring(msg.indexOf(':') + 1) : "unknown";
+
                     // ενώνει τις λίστες παιχνιδιών από κάθε Worker σε μία ενιαία λίστα
                     List<Object> mapResults = (List<Object>) in.readObject(); // μία List<Game> ανά Worker
                     List<Game> combined = new ArrayList<>();
@@ -49,7 +52,7 @@ public class Reducer {
 
                     out.writeObject(combined);
                     out.flush();
-                    System.out.println("[Reducer] REDUCE_SEARCH: συνδύασε " + combined.size() + " παιχνίδια.");
+                    System.out.println("[Reducer] REDUCE_SEARCH [" + requestId + "]: συνδύασε " + combined.size() + " παιχνίδια.");
 
                 } else if (msg.equals("REDUCE_STATS")) {
                     // αθροίζει τα κέρδη/ζημιές ανά κλειδί (παιχνίδι η παίκτης) από όλους τους Workers

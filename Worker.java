@@ -11,9 +11,6 @@ public class Worker {
     private Map<String, Double> gameProfits   = new HashMap<>();  // gameName -> συνολικό κέρδος πλατφόρμας
     private Map<String, Double> playerProfits = new HashMap<>();  // playerId -> συνολική καθαρή ζημιά παίκτη
 
-    private final Map<String, Queue<Integer>> gameBuffers = new HashMap<>(); // secretKey -> buffer τυχαίων αριθμών για κάθε παιχνίδι
-    private final int BUFFER_SIZE = 50; // μέγιστος αριθμός τυχαίων αριθμων στον buffer πριν σταματήσει ο Producer
-
     private static String SRG_IP   = "localhost"; // ορίζεται από args
     private static final int SRG_PORT = 4321;
 
@@ -40,16 +37,6 @@ public class Worker {
         } catch (IOException e) { e.printStackTrace(); }
     }
 
-    // επιστρέφει τον buffer τυχαίων για ένα παιχνίδι αν δεν υπάρχει ακόμα, τον δημιουργεί και ξεκινάει τον Producer
-    private synchronized Queue<Integer> getOrCreateBuffer(String secretKey) {
-        if (!gameBuffers.containsKey(secretKey)) {
-            Queue<Integer> buffer = new LinkedList<>();
-            gameBuffers.put(secretKey, buffer);
-            new Thread(new RandomProducer(secretKey, buffer)).start();
-        }
-        return gameBuffers.get(secretKey);
-    }
-
     // χειρίζεται κάθε αίτημα που έρχεται από τον Master
     private class MasterHandler implements Runnable {
         private Socket socket;
@@ -66,11 +53,10 @@ public class Worker {
                 Object request = in.readObject();
 
                 if (request instanceof Game) {
-                    // αποθηκεύει νέο παιχνίδι στη μνήμη και ξεκινάει αμέσως τον Producer για αυτό
+                    // αποθηκεύει νέο παιχνίδι στη μνήμη
                     Game g = (Game) request;
                     synchronized (games) { games.put(g.gameName, g); }
                     removedGames.remove(g.gameName);
-                    getOrCreateBuffer(g.secretKey);
                     System.out.println("[Worker] Προστέθηκε: " + g.gameName);
 
                 } else if (request instanceof SearchFilters) {
@@ -181,16 +167,23 @@ public class Worker {
         synchronized (games) { g = games.get(pr.gameName); }
         if (g == null) return 0.0;
 
-        Queue<Integer> buffer = getOrCreateBuffer(g.secretKey);
+        // ζητάει έναν αριθμό απευθείας από τον SRG Server — ο buffer βρίσκεται εκεί πλέον
         int num;
-
-        // περιμένει μέχρι ο Producer να βάλει κάτι στον buffer
-        synchronized (buffer) {
-            while (buffer.isEmpty()) {
-                try { buffer.wait(); } catch (InterruptedException e) {}
+        try (Socket srgSocket       = new Socket(SRG_IP, SRG_PORT);
+             ObjectOutputStream out = new ObjectOutputStream(srgSocket.getOutputStream());
+             ObjectInputStream  in  = new ObjectInputStream(srgSocket.getInputStream())) {
+            out.flush();
+            out.writeUTF(g.secretKey);
+            out.flush();
+            num = in.readInt();
+            byte[] hash = (byte[]) in.readObject();
+            if (!verifyHash(num, g.secretKey, hash)) {
+                System.err.println("[Worker] Hash mismatch για " + pr.gameName + " — αποτέλεσμα ακυρώθηκε.");
+                return 0.0;
             }
-            num = buffer.poll();
-            buffer.notifyAll(); // λέω στον Producer ότι έχει ελεύθερη θέση
+        } catch (Exception e) {
+            System.err.println("[Worker] Αδυναμία επικοινωνίας με SRG: " + e.getMessage());
+            return 0.0;
         }
 
         double winAmount;
@@ -219,55 +212,6 @@ public class Worker {
         }
 
         return winAmount;
-    }
-
-    // τρέχει ασύγχρονα στο background και γεμίζει τον buffer με τυχαίους αριθμούς από τον SRGServer
-    // κάνει wait() αν ο buffer είναι γεμάτος
-    private class RandomProducer implements Runnable {
-        private final String secret;         // secretKey του παιχνιδιού το οποιο το στέλνω στον SRG για το hash
-        private final Queue<Integer> buffer; // κοινός buffer με τον Consumer (calculatePlay)
-
-        RandomProducer(String secret, Queue<Integer> buffer) {
-            this.secret = secret;
-            this.buffer = buffer;
-        }
-
-        @Override
-        public void run() {
-            while (true) {
-                try {
-                    // περιμένω αν ο buffer είναι ήδη γεμάτος
-                    synchronized (buffer) {
-                        while (buffer.size() >= BUFFER_SIZE) buffer.wait();
-                    }
-
-                    // ζητάω νέο τυχαίο αριθμό από τον SRG Server
-                    try (Socket srgSocket = new Socket(SRG_IP, SRG_PORT);
-                         ObjectOutputStream out = new ObjectOutputStream(srgSocket.getOutputStream())) {
-                        out.flush();
-                        try (ObjectInputStream in = new ObjectInputStream(srgSocket.getInputStream())) {
-                            out.writeUTF(secret);
-                            out.flush();
-
-                            int num             = in.readInt();          // ο τυχαίος αριθμός
-                            byte[] receivedHash = (byte[]) in.readObject(); // το SHA-256 hash για επαλήθευση
-
-                            // αν το hash δεν ταιριάζει, πετάω τον αριθμό
-                            if (verifyHash(num, secret, receivedHash)) {
-                                synchronized (buffer) {
-                                    buffer.add(num);
-                                    buffer.notifyAll(); // ειδοποιώ τον Consumer ότι υπάρχει αριθμός
-                                }
-                            }
-                        }
-                    }
-                    Thread.sleep(100); // μικρή παύση για να μην πλημμυρίσω τον SRG με αιτήματα
-
-                } catch (Exception e) {
-                    try { Thread.sleep(1000); } catch (InterruptedException ie) {} // αν ο SRG πέσει, ξαναπροσπαθώ σε 1 δευτερόλεπτο
-                }
-            }
-        }
     }
 
     // ελέγχει αν ο SHA-256(αριθμός + secret) == receivedHash

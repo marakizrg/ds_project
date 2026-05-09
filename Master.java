@@ -35,7 +35,7 @@ public class Master {
     // ξεκινάει τον Master server κάθε client εξυπηρετείται σε ξεχωριστό thread
     public void startServer() {
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            System.out.println("Ο Master Server ακούει στη θύρα " + PORT + "...");
+            System.out.println("Master running on port " + PORT + "...");
             while (true) {
                 Socket clientSocket = serverSocket.accept();
                 new Thread(new ClientHandler(clientSocket)).start();
@@ -67,8 +67,9 @@ public class Master {
 
                 } else if (request instanceof SearchFilters) {
                     // αναζήτηση με MapReduce στέλνω φίλτρα σε ΟΛΟΥΣ τους Workers και ο Reducer ενώνει
-                    System.out.println("MapReduce Search...");
-                    List<Game> results = performMapReduceSearch((SearchFilters) request);
+                    SearchFilters sf = (SearchFilters) request;
+                    System.out.println("MapReduce Search [" + sf.requestId + "]...");
+                    List<Game> results = performMapReduceSearch(sf);
                     out.writeObject(results);
                     out.flush();
 
@@ -110,7 +111,7 @@ public class Master {
                     // Android app στέλνει JSON string αντί για Java object (λόγω διαφορετικού package)
                     String jsonStr = ((String) request).substring("SEARCH_JSON:".length());
                     SearchFilters filters = SearchFilters.fromJson(jsonStr);
-                    System.out.println("Android MapReduce Search (JSON)...");
+                    System.out.println("Android MapReduce Search (JSON) [" + filters.requestId + "]...");
                     List<Game> results = performMapReduceSearch(filters);
                     StringBuilder sb = new StringBuilder("[");
                     for (int i = 0; i < results.size(); i++) {
@@ -184,7 +185,7 @@ public class Master {
         try (Socket s = new Socket(reducerIp, REDUCER_PORT);
              ObjectOutputStream rOut = new ObjectOutputStream(s.getOutputStream());
              ObjectInputStream  rIn  = new ObjectInputStream(s.getInputStream())) {
-            rOut.writeObject("REDUCE_SEARCH");
+            rOut.writeObject("REDUCE_SEARCH:" + filters.requestId); // περνάω το requestId για ανιχνευσιμότητα
             rOut.writeObject(mapResults); // λίστα από List<Game> μία ανά Worker
             rOut.flush();
             return (List<Game>) rIn.readObject();
