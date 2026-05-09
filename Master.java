@@ -106,6 +106,31 @@ public class Master {
                     out.writeBoolean(success);
                     out.flush();
 
+                } else if (request instanceof String && ((String) request).startsWith("SEARCH_JSON:")) {
+                    // Android app στέλνει JSON string αντί για Java object (λόγω διαφορετικού package)
+                    String jsonStr = ((String) request).substring("SEARCH_JSON:".length());
+                    SearchFilters filters = SearchFilters.fromJson(jsonStr);
+                    System.out.println("Android MapReduce Search (JSON)...");
+                    List<Game> results = performMapReduceSearch(filters);
+                    StringBuilder sb = new StringBuilder("[");
+                    for (int i = 0; i < results.size(); i++) {
+                        if (i > 0) sb.append(",");
+                        sb.append(results.get(i).toJson());
+                    }
+                    sb.append("]");
+                    out.writeObject(sb.toString());
+                    out.flush();
+
+                } else if (request instanceof String && ((String) request).startsWith("PLAY_JSON:")) {
+                    // Android app στέλνει JSON string για ποντάρισμα
+                    String jsonStr = ((String) request).substring("PLAY_JSON:".length());
+                    PlayRequest playReq = PlayRequest.fromJson(jsonStr);
+                    System.out.println("Android Ποντάρισμα (JSON) για: " + playReq.gameName);
+                    int workerIndex = Math.abs(playReq.gameName.hashCode()) % workers.size();
+                    double winAmount = forwardPlayToWorker(playReq, workers.get(workerIndex));
+                    out.writeDouble(winAmount);
+                    out.flush();
+
                 } else if (request instanceof String && request.equals("VIEW_PROFITS")) {
                     // στατιστικά κερδών ανά παιχνίδι MapReduce με GET_STATS
                     Map<String, Double> stats = performMapReduceStats("GET_STATS");

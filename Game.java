@@ -41,4 +41,24 @@ public class Game implements Serializable {
         else if (riskLevel.equalsIgnoreCase("medium")) jackpot = 20;
         else                                           jackpot = 40;
     }
+
+    // σειριοποίηση σε JSON string — χρησιμοποιείται για επικοινωνία με Android app
+    public String toJson() {
+        return "{\"gameName\":\"" + esc(gameName) + "\""
+             + ",\"providerName\":\"" + esc(providerName) + "\""
+             + ",\"stars\":" + stars
+             + ",\"noOfVotes\":" + noOfVotes
+             + ",\"gameLogoPath\":\"" + esc(gameLogoPath) + "\""
+             + ",\"minBet\":" + minBet
+             + ",\"maxBet\":" + maxBet
+             + ",\"riskLevel\":\"" + esc(riskLevel) + "\""
+             + ",\"betCategory\":\"" + esc(betCategory) + "\""
+             + ",\"jackpot\":" + jackpot
+             + "}";
+    }
+
+    private String esc(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
 }
